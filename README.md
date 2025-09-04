@@ -29,5 +29,5 @@ cd JokenpoGame
 ```
 Execute o projeto:
 ```bash
-bashdotnet run
+dotnet run
 ```
