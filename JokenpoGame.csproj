@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include=".github\workflows\continuousintegration.yml" />
+    <Folder Include=".github\workflows\" />
   </ItemGroup>
 
 </Project>
