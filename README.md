@@ -1,4 +1,4 @@
-﻿# Um jogo Jokenpo (Pedra, Papel, Tesoura)
+﻿# jogo Jokenpo (Pedra, Papel, Tesoura)
 
 Um jogo de Jokenpo desenvolvido em C# utilizando princípios de **Programação Orientada a Objetos (POO)**.
 
