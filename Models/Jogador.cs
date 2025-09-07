@@ -8,7 +8,7 @@
         public Jogador(string nome)
         {
             Nome = nome;
-            Pontuacao = 0; // Todo jogador começa com 0 pontos
+            Pontuacao = 0;
         }
 
         public void AdicionarPonto()

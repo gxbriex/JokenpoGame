@@ -3,8 +3,6 @@ using JokenpoGame.Enums;
 
 namespace JokenpoGame.Services
 {
-    // CLASSE SERVICE: Contém a lógica de negócio do jogo
-    // Em back-end, services contêm as regras e operações principais
     public class JokenpoGameService
     {
         private Jogador _jogadorHumano;
@@ -15,7 +13,7 @@ namespace JokenpoGame.Services
         {
             _jogadorHumano = new Jogador(nomeJogador);
             _jogadorComputador = new Jogador("Computador");
-            _random = new Random(); // Para gerar jogadas aleatórias do computador
+            _random = new Random();
         }
 
         public void IniciarJogo()
@@ -78,7 +76,7 @@ namespace JokenpoGame.Services
         private Jogada ObterJogadaComputador()
         {
             int numeroAleatorio = _random.Next(1, 4);
-            return (Jogada)numeroAleatorio; // Converte para enum
+            return (Jogada)numeroAleatorio;
         }
 
         private void ExibirJogadas(Jogada jogadaHumano, Jogada jogadaComputador)
