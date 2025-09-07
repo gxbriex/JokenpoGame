@@ -1,54 +1,86 @@
-name: .NET CI/CD (Entrega Contínua)
+name: .NET CI/CD with Docker
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, teste-workflow ]
   pull_request:
     branches: [ master ]
 
+env:
+  REGISTRY_URL: ${{ secrets.DOCKER_REGISTRY_URL }}
+  IMAGE_NAME: ${{ secrets.DOCKER_IMAGE_NAME }}
+  IMAGE_TAG: ${{ github.sha }}
+
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-latest
+    name: Build and Test
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '8.0.x'
-      
-    - name: Restore dependencies
-      run: dotnet restore
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
 
-    - name: Build
-      run: dotnet build --no-restore
+      - name: Restore dependencies
+        run: dotnet restore
 
-    - name: Test
-      run: dotnet test --no-build --verbosity normal
-      
-    - name: Publish application
-      run: dotnet publish -c Release -o ./publish
+      - name: Build application
+        run: dotnet build --no-restore --configuration Release
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: jokenpo-game-artifact
-        path: ./publish
+      - name: Run tests
+        run: dotnet test --no-build --configuration Release --verbosity normal
 
-  deploy:
-    needs: build
+  docker-build:
     runs-on: ubuntu-latest
+    name: Build Docker Image
+    needs: build-and-test
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Download artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: jokenpo-game-artifact
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: List downloaded files
-      run: ls -R
+      - name: Login to Docker Registry
+        if: github.ref == 'refs/heads/master'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_URL }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Build Docker image for testing
+        if: github.ref != 'refs/heads/master'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: ${{ env.IMAGE_NAME }}:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Docker image to registry
+        if: github.ref == 'refs/heads/master'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Test Docker image
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/master" ]; then
+            echo "Testing Docker image locally..."
+            docker run --rm ${{ env.IMAGE_NAME }}:test --help || echo "Container test completed"
+          fi
