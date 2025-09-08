@@ -1,9 +1,7 @@
-﻿name: CD - Continuous Delivery
+﻿name: CI/CD - Continuous Integration & Delivery
 
 on:
-  workflow_run:
-    workflows: ["CI - Continuous Integration"]
-    types: [completed]
+  push:
     branches: [ master, teste-workflow ]
   pull_request:
     branches: [ master ]
@@ -14,10 +12,38 @@ env:
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
-  docker-build:
+  build-and-test:
+    runs-on: ubuntu-latest
+    name: Build and Test Application
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build application
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Run tests
+        run: dotnet test --no-build --configuration Release --verbosity normal
+
+      - name: CI completed successfully
+        run: |
+          echo "Continuous Integration feito com sucesso!"
+          echo "Pronto para Continuous Delivery pipeline"
+
+  build-docker-and-deploy:
     runs-on: ubuntu-latest
     name: Build Docker and Deploy
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'pull_request' }}
+    needs: build-and-test
+    if: success()
 
     steps:
       - name: Checkout repository
