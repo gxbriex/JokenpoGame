@@ -135,7 +135,7 @@ namespace JokenpoGame.Services
 
         private void ExibirResultadoFinal()
         {
-            Console.WriteLine("\n=== RESULTADO FINAL ===");
+            Console.WriteLine("\n RESULTADO FINAL ");
             ExibirPontuacao();
             
             if (_jogadorHumano.Pontuacao > _jogadorComputador.Pontuacao)
