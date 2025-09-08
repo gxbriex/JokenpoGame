@@ -31,5 +31,5 @@ jobs:
 
       - name: CI completed successfully
         run: |
-          echo "✅ Continuous Integration completed successfully!"
-          echo "🚀 Ready for Continuous Delivery pipeline"
+          echo "Continuous Integration feito com sucesso!"
+          echo "Pronto para Continuous Delivery pipeline"

@@ -64,4 +64,4 @@ jobs:
 
       - name: CD completed successfully
         run: |
-          echo "✅ Continuous Delivery completed successfully!"
+          echo "Continuous Delivery feito com sucesso!"
