@@ -20,6 +20,37 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Send Discord notification - Build started
+        if: always()
+        run: |
+          curl -H "Content-Type: application/json" \
+               -d '{
+                 "embeds": [{
+                   "title": "Build Iniciado",
+                   "description": "Pipeline CI/CD iniciado para o projeto",
+                   "color": 3447003,
+                   "fields": [
+                     {
+                       "name": "Branch",
+                       "value": "${{ github.ref_name }}",
+                       "inline": true
+                     },
+                     {
+                       "name": "Commit",
+                       "value": "`${{ github.sha }}`",
+                       "inline": true
+                     },
+                     {
+                       "name": "Author",
+                       "value": "${{ github.actor }}",
+                       "inline": true
+                     }
+                   ],
+                   "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'"
+                 }]
+               }' \
+               ${{ secrets.DISCORD_WEBHOOK_URL }}
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -39,6 +70,73 @@ jobs:
           echo "Continuous Integration feito com sucesso!"
           echo "Pronto para Continuous Delivery pipeline"
 
+      - name: Send Discord notification - CI Success
+        if: success()
+        run: |
+          curl -H "Content-Type: application/json" \
+               -d '{
+                 "embeds": [{
+                   "title": "CI Concluído com Sucesso",
+                   "description": "Build e testes executados com sucesso!",
+                   "color": 65280,
+                   "fields": [
+                     {
+                       "name": "Branch",
+                       "value": "${{ github.ref_name }}",
+                       "inline": true
+                     },
+                     {
+                       "name": "Duração",
+                       "value": "Aproximadamente ${{ job.status }} minutos",
+                       "inline": true
+                     },
+                     {
+                       "name": "Próximo passo",
+                       "value": "Iniciando processo de deploy...",
+                       "inline": false
+                     }
+                   ],
+                   "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'"
+                 }]
+               }' \
+               ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+      - name: Send Discord notification - CI Failed
+        if: failure()
+        run: |
+          curl -H "Content-Type: application/json" \
+               -d '{
+                 "embeds": [{
+                   "title": "CI Falhou",
+                   "description": "Erro durante build ou testes!",
+                   "color": 16711680,
+                   "fields": [
+                     {
+                       "name": "Branch",
+                       "value": "${{ github.ref_name }}",
+                       "inline": true
+                     },
+                     {
+                       "name": "Commit",
+                       "value": "`${{ github.sha }}`",
+                       "inline": true
+                     },
+                     {
+                       "name": "Autor",
+                       "value": "${{ github.actor }}",
+                       "inline": true
+                     },
+                     {
+                       "name": "Ação",
+                       "value": "Verifique os logs do GitHub Actions para mais detalhes",
+                       "inline": false
+                     }
+                   ],
+                   "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'"
+                 }]
+               }' \
+               ${{ secrets.DISCORD_WEBHOOK_URL }}
+
   build-docker-and-deploy:
     runs-on: ubuntu-latest
     name: Build Docker and Deploy
@@ -51,6 +149,32 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Send Discord notification - Docker build started
+        if: always()
+        run: |
+          curl -H "Content-Type: application/json" \
+               -d '{
+                 "embeds": [{
+                   "title": "Docker Build Iniciado",
+                   "description": "Iniciando construção da imagem Docker",
+                   "color": 3447003,
+                   "fields": [
+                     {
+                       "name": "Branch",
+                       "value": "${{ github.ref_name }}",
+                       "inline": true
+                     },
+                     {
+                       "name": "Ambiente",
+                       "value": "${{ github.ref == 'refs/heads/master' && 'Produção' || 'Teste' }}",
+                       "inline": true
+                     }
+                   ],
+                   "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'"
+                 }]
+               }' \
+               ${{ secrets.DISCORD_WEBHOOK_URL }}
 
       - name: Build Docker image for testing
         if: github.ref != 'refs/heads/master'
@@ -99,3 +223,75 @@ jobs:
           else
             echo "Ready for deployment - Docker image tested successfully!"
           fi
+
+      - name: Send Discord notification - Deploy Success
+        if: success()
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/master" ]; then
+            DEPLOY_TYPE="Deploy em Produção Concluído"
+            DEPLOY_MSG="Aplicação foi implantada em produção com sucesso!"
+            DEPLOY_COLOR=65280
+          else
+            DEPLOY_TYPE="Teste Docker Concluído"
+            DEPLOY_MSG="Imagem Docker testada com sucesso e pronta para deploy!"
+            DEPLOY_COLOR=16776960
+          fi
+          
+          curl -H "Content-Type: application/json" \
+               -d '{
+                 "embeds": [{
+                   "title": "'"$DEPLOY_TYPE"'",
+                   "description": "'"$DEPLOY_MSG"'",
+                   "color": '"$DEPLOY_COLOR"',
+                   "fields": [
+                     {
+                       "name": "Branch",
+                       "value": "${{ github.ref_name }}",
+                       "inline": true
+                     },
+                     {
+                       "name": "Imagem",
+                       "value": "`${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}`",
+                       "inline": true
+                     },
+                     {
+                       "name": "Status",
+                       "value": "Sucesso",
+                       "inline": true
+                     }
+                   ],
+                   "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'"
+                 }]
+               }' \
+               ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+      - name: Send Discord notification - Deploy Failed
+        if: failure()
+        run: |
+          curl -H "Content-Type: application/json" \
+               -d '{
+                 "embeds": [{
+                   "title": "Deploy Falhou",
+                   "description": "Erro durante o processo de deploy!",
+                   "color": 16711680,
+                   "fields": [
+                     {
+                       "name": "Branch",
+                       "value": "${{ github.ref_name }}",
+                       "inline": true
+                     },
+                     {
+                       "name": "Ambiente",
+                       "value": "${{ github.ref == 'refs/heads/master' && 'Produção' || 'Teste' }}",
+                       "inline": true
+                     },
+                     {
+                       "name": "Ação",
+                       "value": "Verifique os logs do GitHub Actions para mais detalhes",
+                       "inline": false
+                     }
+                   ],
+                   "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'"
+                 }]
+               }' \
+               ${{ secrets.DISCORD_WEBHOOK_URL }}
