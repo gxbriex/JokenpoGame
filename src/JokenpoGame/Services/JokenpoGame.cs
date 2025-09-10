@@ -19,7 +19,7 @@ namespace JokenpoGame.Services
         public void IniciarJogo()
         {
             Console.WriteLine("=== JOGO JOKENPO ===");
-            Console.WriteLine("Bem-vindo ao Jokenpo!");
+            Console.WriteLine("Bem-vindo(a) ao Jokenpo!");
             Console.WriteLine();
 
             bool continuarJogando = true;
