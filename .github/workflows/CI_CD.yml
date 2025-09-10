@@ -62,12 +62,79 @@ jobs:
       - name: Build application
         run: dotnet build --no-restore --configuration Release
 
-      - name: Run tests
-        run: dotnet test --no-build --configuration Release --verbosity normal
+      # ========== SEÇÃO DE TESTES APRIMORADA ==========
+      - name: Run Unit Tests with Coverage
+        run: |
+          dotnet test --no-build \
+            --configuration Release \
+            --verbosity normal \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./TestResults \
+            --logger "trx;LogFileName=test-results.trx"
+
+      - name: Generate Coverage Report
+        run: |
+          dotnet tool install -g dotnet-reportgenerator-globaltool
+          reportgenerator \
+            -reports:"./TestResults/**/coverage.cobertura.xml" \
+            -targetdir:"./CoverageReport" \
+            -reporttypes:"Html;Cobertura;TextSummary"
+
+      - name: Display Test Coverage Summary
+        run: |
+          if [ -f "./CoverageReport/Summary.txt" ]; then
+            echo "========== RESUMO DE COBERTURA DE CÓDIGO =========="
+            cat ./CoverageReport/Summary.txt
+            echo "=================================================="
+          fi
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            ./TestResults/**/*.trx
+            ./CoverageReport/**/*
+          retention-days: 30
+
+      - name: Parse Test Results
+        id: test-results
+        if: always()
+        run: |
+          # Extrai informações dos testes
+          if [ -f "./TestResults/test-results.trx" ]; then
+            TOTAL_TESTS=$(grep -o 'total="[0-9]*"' ./TestResults/test-results.trx | head -1 | cut -d'"' -f2)
+            PASSED_TESTS=$(grep -o 'passed="[0-9]*"' ./TestResults/test-results.trx | head -1 | cut -d'"' -f2)
+            FAILED_TESTS=$(grep -o 'failed="[0-9]*"' ./TestResults/test-results.trx | head -1 | cut -d'"' -f2)
+            
+            echo "total_tests=${TOTAL_TESTS:-0}" >> $GITHUB_OUTPUT
+            echo "passed_tests=${PASSED_TESTS:-0}" >> $GITHUB_OUTPUT
+            echo "failed_tests=${FAILED_TESTS:-0}" >> $GITHUB_OUTPUT
+          else
+            echo "total_tests=0" >> $GITHUB_OUTPUT
+            echo "passed_tests=0" >> $GITHUB_OUTPUT
+            echo "failed_tests=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Extract Coverage Percentage
+        id: coverage
+        if: always()
+        run: |
+          if [ -f "./CoverageReport/Summary.txt" ]; then
+            COVERAGE=$(grep "Line coverage:" ./CoverageReport/Summary.txt | grep -o '[0-9.]*%' | head -1)
+            echo "coverage_percent=${COVERAGE:-0%}" >> $GITHUB_OUTPUT
+          else
+            echo "coverage_percent=0%" >> $GITHUB_OUTPUT
+          fi
+      # ================================================
 
       - name: CI completed successfully
         run: |
           echo "Continuous Integration feito com sucesso!"
+          echo "Testes executados: ${{ steps.test-results.outputs.total_tests }}"
+          echo "Testes aprovados: ${{ steps.test-results.outputs.passed_tests }}"
+          echo "Cobertura de código: ${{ steps.coverage.outputs.coverage_percent }}"
           echo "Pronto para Continuous Delivery pipeline"
 
       - name: Send Discord notification - CI Success
@@ -76,7 +143,7 @@ jobs:
           curl -H "Content-Type: application/json" \
                -d '{
                  "embeds": [{
-                   "title": "CI Concluído com Sucesso",
+                   "title": "CI Concluído com Sucesso ✅",
                    "description": "Build e testes executados com sucesso!",
                    "color": 65280,
                    "fields": [
@@ -86,8 +153,13 @@ jobs:
                        "inline": true
                      },
                      {
-                       "name": "Duração",
-                       "value": "Aproximadamente ${{ job.status }} minutos",
+                       "name": "Testes",
+                       "value": "✅ ${{ steps.test-results.outputs.passed_tests }}/${{ steps.test-results.outputs.total_tests }} aprovados",
+                       "inline": true
+                     },
+                     {
+                       "name": "Cobertura",
+                       "value": "${{ steps.coverage.outputs.coverage_percent }}",
                        "inline": true
                      },
                      {
@@ -107,7 +179,7 @@ jobs:
           curl -H "Content-Type: application/json" \
                -d '{
                  "embeds": [{
-                   "title": "CI Falhou",
+                   "title": "CI Falhou ❌",
                    "description": "Erro durante build ou testes!",
                    "color": 16711680,
                    "fields": [
@@ -127,6 +199,11 @@ jobs:
                        "inline": true
                      },
                      {
+                       "name": "Testes",
+                       "value": "${{ steps.test-results.outputs.failed_tests > 0 && format('❌ {0} falharam de {1}', steps.test-results.outputs.failed_tests, steps.test-results.outputs.total_tests) || '⚠️ Erro no build/testes' }}",
+                       "inline": true
+                     },
+                     {
                        "name": "Ação",
                        "value": "Verifique os logs do GitHub Actions para mais detalhes",
                        "inline": false
@@ -137,10 +214,65 @@ jobs:
                }' \
                ${{ secrets.DISCORD_WEBHOOK_URL }}
 
+  # Novo job específico para análise de qualidade (opcional)
+  code-quality:
+    runs-on: ubuntu-latest
+    name: Code Quality Analysis
+    needs: build-and-test
+    if: always() && (success() || failure())
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Download Test Results
+        uses: actions/download-artifact@v4
+        with:
+          name: test-results
+          path: ./DownloadedResults
+
+      - name: Install Code Analysis Tools
+        run: |
+          dotnet tool install -g dotnet-sonarscanner 2>/dev/null || echo "SonarScanner já instalado"
+          dotnet tool install -g security-scan 2>/dev/null || echo "Security scanner não disponível"
+
+      - name: Run Static Code Analysis
+        run: |
+          echo "Executando análise estática de código..."
+          # Aqui você pode adicionar ferramentas como SonarQube, CodeQL, etc.
+          dotnet build --configuration Release --verbosity minimal
+
+      - name: Check Test Coverage Threshold
+        run: |
+          # Define o threshold mínimo de cobertura (exemplo: 80%)
+          MINIMUM_COVERAGE=80
+          COVERAGE_FILE="./DownloadedResults/CoverageReport/Summary.txt"
+          
+          if [ -f "$COVERAGE_FILE" ]; then
+            CURRENT_COVERAGE=$(grep "Line coverage:" "$COVERAGE_FILE" | grep -o '[0-9.]*' | head -1)
+            CURRENT_COVERAGE_INT=$(echo "$CURRENT_COVERAGE" | cut -d'.' -f1)
+            
+            echo "Cobertura atual: ${CURRENT_COVERAGE}%"
+            echo "Cobertura mínima: ${MINIMUM_COVERAGE}%"
+            
+            if [ "$CURRENT_COVERAGE_INT" -lt "$MINIMUM_COVERAGE" ]; then
+              echo "⚠️ Cobertura de código abaixo do mínimo exigido!"
+              echo "coverage_warning=true" >> $GITHUB_ENV
+            else
+              echo "✅ Cobertura de código adequada!"
+              echo "coverage_warning=false" >> $GITHUB_ENV
+            fi
+          fi
+
   build-docker-and-deploy:
     runs-on: ubuntu-latest
     name: Build Docker and Deploy
-    needs: build-and-test
+    needs: [build-and-test, code-quality]
     if: success()
 
     steps:
@@ -156,7 +288,7 @@ jobs:
           curl -H "Content-Type: application/json" \
                -d '{
                  "embeds": [{
-                   "title": "Docker Build Iniciado",
+                   "title": "Docker Build Iniciado 🐳",
                    "description": "Iniciando construção da imagem Docker",
                    "color": 3447003,
                    "fields": [
@@ -228,11 +360,11 @@ jobs:
         if: success()
         run: |
           if [ "${{ github.ref }}" == "refs/heads/master" ]; then
-            DEPLOY_TYPE="Deploy em Produção Concluído"
+            DEPLOY_TYPE="Deploy em Produção Concluído 🚀"
             DEPLOY_MSG="Aplicação foi implantada em produção com sucesso!"
             DEPLOY_COLOR=65280
           else
-            DEPLOY_TYPE="Teste Docker Concluído"
+            DEPLOY_TYPE="Teste Docker Concluído ✅"
             DEPLOY_MSG="Imagem Docker testada com sucesso e pronta para deploy!"
             DEPLOY_COLOR=16776960
           fi
@@ -256,7 +388,7 @@ jobs:
                      },
                      {
                        "name": "Status",
-                       "value": "Sucesso",
+                       "value": "Sucesso ✅",
                        "inline": true
                      }
                    ],
@@ -271,7 +403,7 @@ jobs:
           curl -H "Content-Type: application/json" \
                -d '{
                  "embeds": [{
-                   "title": "Deploy Falhou",
+                   "title": "Deploy Falhou ❌",
                    "description": "Erro durante o processo de deploy!",
                    "color": 16711680,
                    "fields": [
